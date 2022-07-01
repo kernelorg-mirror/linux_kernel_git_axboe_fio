@@ -11,6 +11,7 @@
 #include "lib/pow2.h"
 #include "minmax.h"
 #include "zbd.h"
+#include "crc/crc32c.h"
 
 struct io_completion_data {
 	int nr;				/* input */
@@ -2221,6 +2222,18 @@ static void save_buf_state(struct thread_data *td, struct frand_state *rs)
 		frand_copy(&td->buf_state_prev, rs);
 }
 
+static void fill_random_buf_nostate(struct thread_data *td, void *buf,
+				    unsigned int len)
+{
+#if defined(ARCH_HAVE_CRC_CRYPTO)
+	crc32c_arm64(buf, len);
+#elif defined(ARCH_HAVE_SSE4_2)
+	crc32c_intel(buf, len);
+#else
+	fill_random_buf(&td->buf_state, buf, len);
+#endif
+}
+
 void fill_io_buffer(struct thread_data *td, void *buf, unsigned long long min_write,
 		    unsigned long long max_bs)
 {
@@ -2265,7 +2278,7 @@ void fill_io_buffer(struct thread_data *td, void *buf, unsigned long long min_wr
 	else if (o->zero_buffers)
 		memset(buf, 0, max_bs);
 	else
-		fill_random_buf(get_buf_state(td), buf, max_bs);
+		fill_random_buf_nostate(td, buf, max_bs);
 }
 
 /*
